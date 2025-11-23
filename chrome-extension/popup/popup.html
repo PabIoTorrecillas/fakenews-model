@@ -1,0 +1,85 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fake News Detector</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🛡️ Fake News Detector</h1>
+    </div>
+    
+    <!-- Loading State -->
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p>Analizando artículo...</p>
+    </div>
+    
+    <!-- Error State -->
+    <div id="error" class="error hidden">
+      <p id="error-message"></p>
+      <button id="retry-btn" class="button button-secondary">Reintentar</button>
+    </div>
+    
+    <!-- Results -->
+    <div id="results" class="results hidden">
+      <!-- Score Display -->
+      <div class="score-container">
+        <div id="score-circle" class="score-circle">
+          <div class="score-value">
+            <span id="score-number">0</span>
+            <span class="score-max">/100</span>
+          </div>
+        </div>
+        <div class="classification">
+          <span id="classification-badge" class="badge">-</span>
+        </div>
+      </div>
+      
+      <!-- Details -->
+      <div class="details">
+        <div class="detail-row">
+          <span class="label">Confianza:</span>
+          <span id="confidence" class="value">-</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Fake:</span>
+          <span id="prob-fake" class="value">-</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Real:</span>
+          <span id="prob-real" class="value">-</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Tiempo:</span>
+          <span id="processing-time" class="value">-</span>
+        </div>
+      </div>
+      
+      <!-- Explanation -->
+      <div class="explanation">
+        <h3>ℹ️ Explicación</h3>
+        <p id="explanation-text"></p>
+      </div>
+      
+      <!-- Actions -->
+      <div class="actions">
+        <button id="analyze-again-btn" class="button button-secondary">Analizar de nuevo</button>
+      </div>
+    </div>
+    
+    <!-- No Article Detected -->
+    <div id="no-article" class="no-article hidden">
+      <p>⚠️ No se detectó un artículo de noticias en esta página.</p>
+      <button id="analyze-anyway-btn" class="button button-primary">Analizar de todos modos</button>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
