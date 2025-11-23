@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Modelos (para el elmiliano subirlos, descomentar despues)
+#models/bert_fakenews_v1/pytorch_model.bin
+#models/bert_fakenews_v1_onnx/model.onnx
+
+# Datos
+data/raw/
+data/processed/
+*.csv
+*.tsv
+
+# Logs
+results/logs/
+*.log
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Cache
+.cache/
+*.cache
