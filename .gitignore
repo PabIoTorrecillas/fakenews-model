@@ -13,7 +13,8 @@ build/
 
 # Modelos (para el elmiliano subirlos, descomentar despues)
 #models/bert_fakenews_v1/pytorch_model.bin
-#models/bert_fakenews_v1_onnx/model.onnx
+#models/bert_fakenews_v1_onnx/model.onnx (PENDIENTE)
+
 # Ignorar checkpoints del modelo
 models/bert_fakenews_v1/checkpoint-*/
 
