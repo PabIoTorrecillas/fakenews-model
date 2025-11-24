@@ -14,6 +14,8 @@ build/
 # Modelos (para el elmiliano subirlos, descomentar despues)
 #models/bert_fakenews_v1/pytorch_model.bin
 #models/bert_fakenews_v1_onnx/model.onnx
+# Ignorar checkpoints del modelo
+models/bert_fakenews_v1/checkpoint-*/
 
 # Datos
 data/raw/

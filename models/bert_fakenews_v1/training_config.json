@@ -1,0 +1,14 @@
+{
+  "model_name": "distilbert-base-uncased",
+  "max_length": 512,
+  "batch_size": 16,
+  "learning_rate": 2e-05,
+  "num_epochs": 3,
+  "warmup_steps": 500,
+  "weight_decay": 0.01,
+  "output_dir": "./models/bert_fakenews_v1",
+  "logging_dir": "./results/logs",
+  "save_steps": 1000,
+  "eval_steps": 500,
+  "seed": 42
+}

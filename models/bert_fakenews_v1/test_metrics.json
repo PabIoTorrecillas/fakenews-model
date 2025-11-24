@@ -1,0 +1,9 @@
+{
+  "test_accuracy": 0.9212693798449613,
+  "test_precision": 0.9095619406500236,
+  "test_recall": 0.935562015503876,
+  "test_f1": 0.9223787914974922,
+  "training_time_minutes": 13.567658333333332,
+  "total_samples": 41278,
+  "model_name": "distilbert-base-uncased"
+}
