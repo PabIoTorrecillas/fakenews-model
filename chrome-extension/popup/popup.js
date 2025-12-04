@@ -48,6 +48,8 @@ function showError(message) {
 /**
  * Carga y muestra resultados
  */
+// chrome-extension/popup/popup.js - ARREGLAR LECTURA
+
 async function loadResults() {
   try {
     showView('loading');
@@ -60,13 +62,26 @@ async function loadResults() {
       return;
     }
     
-    // Buscar resultado en storage
-    const result = await chrome.storage.local.get(tab.url);
+    console.log('🔍 Buscando análisis para:', tab.url);
     
-    if (result[tab.url]) {
-      displayResults(result[tab.url]);
+    // NUEVO: Primero buscar en "latest_analysis"
+    const latestResult = await chrome.storage.local.get('latest_analysis');
+    
+    if (latestResult.latest_analysis && latestResult.latest_analysis.url === tab.url) {
+      console.log('✅ Encontrado análisis más reciente');
+      displayResults(latestResult.latest_analysis);
+      return;
+    }
+    
+    // Fallback: buscar por URL
+    const storageKey = `analysis_${tab.url}`;
+    const result = await chrome.storage.local.get(storageKey);
+    
+    if (result[storageKey]) {
+      console.log('✅ Encontrado análisis en cache');
+      displayResults(result[storageKey]);
     } else {
-      // No hay análisis previo, mostrar mensaje
+      console.log('⚠️ No hay análisis previo');
       showView('no-article');
     }
     
@@ -76,12 +91,14 @@ async function loadResults() {
   }
 }
 
-/**
- * Muestra los resultados del análisis
- */
 function displayResults(data) {
+  console.log('📊 Mostrando resultados:', data);
+  
   // Score
-  scoreNumber.textContent = Math.round(data.score);
+  const scoreValue = Math.round(data.score);
+  scoreNumber.textContent = scoreValue;
+  
+  console.log(`🎯 Score en UI: ${scoreValue}`);
   
   // Color del círculo según score
   scoreCircle.classList.remove('high', 'medium', 'low');
@@ -90,11 +107,13 @@ function displayResults(data) {
   else scoreCircle.classList.add('low');
   
   // Clasificación
-  classificationBadge.textContent = data.classification === 'real' ? '✅ Real' : '❌ Fake';
+  const classText = data.classification === 'real' ? '✅ Real' : 
+                    data.classification === 'uncertain' ? '⚠️ Dudoso' : '❌ Fake';
+  classificationBadge.textContent = classText;
   classificationBadge.classList.remove('real', 'fake', 'uncertain');
   
-  if (data.score >= 75) classificationBadge.classList.add('real');
-  else if (data.score >= 50) classificationBadge.classList.add('uncertain');
+  if (data.score >= 60) classificationBadge.classList.add('real');
+  else if (data.score >= 40) classificationBadge.classList.add('uncertain');
   else classificationBadge.classList.add('fake');
   
   // Detalles
@@ -103,11 +122,17 @@ function displayResults(data) {
   probReal.textContent = `${(data.probabilities.real * 100).toFixed(1)}%`;
   processingTime.textContent = `${data.processing_time_ms.toFixed(0)}ms`;
   
+  console.log('📊 Probabilidades mostradas:');
+  console.log(`   Fake: ${(data.probabilities.fake * 100).toFixed(1)}%`);
+  console.log(`   Real: ${(data.probabilities.real * 100).toFixed(1)}%`);
+  
   // Explicación
   explanationText.textContent = getExplanation(data);
   
   showView('results');
 }
+
+// ... resto del código igual ...
 
 /**
  * Genera explicación basada en el resultado

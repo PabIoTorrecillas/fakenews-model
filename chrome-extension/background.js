@@ -13,6 +13,8 @@ const API_CONFIG = {
 /**
  * Analiza el contenido de una página
  */
+// chrome-extension/background.js - ARREGLAR CACHE
+
 async function analyzePage(tabId) {
   try {
     console.log(`📊 Analizando tab ${tabId}...`);
@@ -22,7 +24,7 @@ async function analyzePage(tabId) {
     
     if (!isNews.isNews) {
       console.log('⏭️ No es un artículo de noticias, saltando análisis');
-      updateBadge(tabId, '', '#808080'); // Gris
+      updateBadge(tabId, '', '#808080');
       return;
     }
     
@@ -47,6 +49,8 @@ async function analyzePage(tabId) {
     // Mostrar badge de "analizando"
     updateBadge(tabId, '...', '#2196F3');
     
+    console.log(`📤 Enviando ${content.wordCount} palabras a la API...`);
+    
     // Enviar a API
     const apiResponse = await fetch(`${API_CONFIG.baseUrl}/analyze`, {
       method: 'POST',
@@ -67,17 +71,28 @@ async function analyzePage(tabId) {
     const result = await apiResponse.json();
     
     console.log('✅ Análisis completado:', result);
+    console.log(`📊 Score: ${result.score}, Classification: ${result.classification}`);
+    console.log(`📊 Probabilities: Fake=${result.probabilities.fake}, Real=${result.probabilities.real}`);
     
-    // Guardar resultado
+    // IMPORTANTE: Agregar timestamp y URL para identificar
+    const analysisResult = {
+      ...result,
+      title: content.title,
+      analyzedAt: new Date().toISOString(),
+      url: content.url,  // CLAVE para identificar
+      wordCount: content.wordCount
+    };
+    
+    // Guardar resultado con URL como key
+    const storageKey = `analysis_${content.url}`;
     await chrome.storage.local.set({
-      [content.url]: {
-        ...result,
-        title: content.title,
-        analyzedAt: new Date().toISOString()
-      }
+      [storageKey]: analysisResult,
+      'latest_analysis': analysisResult  // NUEVO: guardar también como "latest"
     });
     
-    // Actualizar badge con score
+    console.log(`💾 Guardado en storage con key: ${storageKey}`);
+    
+    // Actualizar badge con score FRESCO
     updateBadge(tabId, Math.round(result.score).toString(), getColorForScore(result.score));
     
     return result;
@@ -88,6 +103,8 @@ async function analyzePage(tabId) {
     return null;
   }
 }
+
+// ... resto del código igual ...
 
 /**
  * Actualiza el badge de la extensión
