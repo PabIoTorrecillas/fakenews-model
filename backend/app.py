@@ -1,17 +1,17 @@
-# ============================================
-# backend/app.py - API Principal (VERSIÓN PYTORCH)
-# ============================================
+# backend/app.py - ACTUALIZADO
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import time
 from datetime import datetime
+from urllib.parse import urlparse
 import logging
 
-from models import AnalysisRequest, AnalysisResponse, HealthResponse
+from models import AnalysisRequest, AnalysisResponse, HealthResponse, DomainReputationResponse
 from inference import ModelInference
 from config import settings
+from database import mongodb  # ← NUEVO
 
 # Configurar logging
 logging.basicConfig(
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Fake News Detector API",
-    description="ML-powered API for detecting fake news using BERT",
+    description="ML-powered API with MongoDB integration",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -46,21 +46,27 @@ model_inference = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Cargar modelo al iniciar la API"""
+    """Cargar modelo y conectar a MongoDB al iniciar"""
     global model_inference
     logger.info("🚀 Starting Fake News Detector API...")
     
     try:
+        # Conectar a MongoDB
+        await mongodb.connect()
+        
+        # Cargar modelo ML
         model_inference = ModelInference(model_path=settings.MODEL_PATH)
         logger.info("✅ Model loaded successfully")
+        
     except Exception as e:
-        logger.error(f"❌ Error loading model: {e}")
+        logger.error(f"❌ Error during startup: {e}")
         raise
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Cleanup al cerrar"""
+    """Cerrar conexiones al apagar"""
     logger.info("👋 Shutting down API...")
+    await mongodb.close()
 
 # ============================================
 # MIDDLEWARE - Request Logging
@@ -92,66 +98,39 @@ def root():
         "service": "Fake News Detector API",
         "version": "1.0.0",
         "status": "operational",
-        "model": "BERT (PyTorch)",
-        "endpoints": {
-            "analyze": "/analyze",
-            "health": "/health",
-            "docs": "/docs"
+        "features": {
+            "ml_model": "BERT (DistilBERT)",
+            "database": "MongoDB",
+            "caching": "Enabled"
         }
     }
 
 @app.get("/health", response_model=HealthResponse, tags=["Info"])
-def health_check():
+async def health_check():
     """Health check endpoint"""
+    
+    # Verificar conexión a MongoDB
+    try:
+        total_analyses = await mongodb.get_total_analyses_count()
+        db_status = "connected"
+    except:
+        total_analyses = 0
+        db_status = "disconnected"
+    
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "model_loaded": model_inference is not None,
-        "model_type": "PyTorch",
+        "model_type": "PyTorch + BERT",
+        "database": db_status,
+        "total_analyses": total_analyses,
         "version": "1.0.0"
     }
 
 @app.post("/analyze", response_model=AnalysisResponse, tags=["Analysis"])
 async def analyze_text(request: AnalysisRequest):
     """
-    Analizar texto para detectar fake news
-    
-    **Parameters:**
-    - text: Texto a analizar (min 10 caracteres, max 10,000)
-    - url: URL de origen (opcional)
-    - user_id: ID del usuario (opcional)
-    
-    **Returns:**
-    - classification: "fake" o "real"
-    - score: Puntuación 0-100 (0=fake, 100=real)
-    - confidence: Confianza del modelo (0-1)
-    - probabilities: Probabilidades detalladas {fake, real}
-    - processing_time_ms: Tiempo de procesamiento
-    - timestamp: Timestamp ISO de la predicción
-    
-    **Example Request:**
-    ```json
-    {
-      "text": "Breaking news: scientists discover cure for all diseases!",
-      "url": "https://example.com/article"
-    }
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "classification": "fake",
-      "score": 15.32,
-      "confidence": 0.8936,
-      "probabilities": {
-        "fake": 0.8936,
-        "real": 0.1064
-      },
-      "processing_time_ms": 234.56,
-      "cached": false,
-      "timestamp": "2024-01-15T10:30:00.000Z"
-    }
-    ```
+    Analizar texto con caché en MongoDB
     """
     start_time = time.time()
     
@@ -169,13 +148,81 @@ async def analyze_text(request: AnalysisRequest):
         )
     
     try:
-        # Hacer predicción
+        # ==========================================
+        # 1. BUSCAR EN CACHÉ (MongoDB)
+        # ==========================================
+        
+        cached_result = None
+        if request.url:
+            cached_result = await mongodb.get_analysis_by_url(request.url)
+            
+            if cached_result:
+                # Convertir ObjectId a string y limpiar
+                cached_result['_id'] = str(cached_result['_id'])
+                
+                logger.info(f"📦 Cache hit para URL: {request.url}")
+                
+                return AnalysisResponse(
+                    classification=cached_result['classification'],
+                    score=cached_result['score'],
+                    confidence=cached_result['confidence'],
+                    probabilities=cached_result['probabilities'],
+                    processing_time_ms=5.0,  # Muy rápido desde caché
+                    cached=True,
+                    timestamp=cached_result['analyzed_at'].isoformat()
+                )
+        
+        # ==========================================
+        # 2. HACER PREDICCIÓN (no está en caché)
+        # ==========================================
+        
         result = model_inference.predict(request.text)
         
-        # Calcular tiempo de procesamiento
         processing_time = (time.time() - start_time) * 1000
         
-        # Preparar respuesta
+        # ==========================================
+        # 3. GUARDAR EN MONGODB
+        # ==========================================
+        
+        # Extraer dominio de la URL
+        domain = None
+        if request.url:
+            try:
+                parsed_url = urlparse(request.url)
+                domain = parsed_url.netloc.replace('www.', '')
+            except:
+                domain = None
+        
+        # Preparar documento para MongoDB
+        analysis_doc = {
+            'url': request.url,
+            'domain': domain,
+            'text_preview': request.text[:200],  # Primeros 200 chars
+            'classification': result['classification'],
+            'score': result['score'],
+            'confidence': result['confidence'],
+            'probabilities': result['probabilities'],
+            'processing_time_ms': round(processing_time, 2),
+            'user_id': request.user_id,
+            'analyzed_at': datetime.utcnow()
+        }
+        
+        # Guardar análisis
+        await mongodb.save_analysis(analysis_doc)
+        
+        # Actualizar reputación del dominio
+        if domain:
+            is_fake = result['classification'] == 'fake'
+            await mongodb.update_domain_reputation(domain, is_fake)
+        
+        # Actualizar estadísticas diarias
+        date_str = datetime.utcnow().strftime('%Y-%m-%d')
+        await mongodb.update_daily_stats(date_str, result['classification'])
+        
+        # ==========================================
+        # 4. PREPARAR RESPUESTA
+        # ==========================================
+        
         response = AnalysisResponse(
             classification=result['classification'],
             score=result['score'],
@@ -187,79 +234,152 @@ async def analyze_text(request: AnalysisRequest):
         )
         
         logger.info(
-            f"Analysis completed: score={result['score']:.1f}, "
-            f"classification={result['classification']}, "
-            f"time={processing_time:.1f}ms"
+            f"✅ Analysis completed: score={result['score']:.1f}, "
+            f"classification={result['classification']}"
         )
         
         return response
         
     except Exception as e:
-        logger.error(f"Error during analysis: {e}")
+        logger.error(f"❌ Error during analysis: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"Internal server error: {str(e)}"
         )
 
-@app.get("/stats", tags=["Info"])
-def get_stats():
+@app.get("/domain-reputation/{domain}", response_model=DomainReputationResponse, tags=["Domains"])
+async def get_domain_reputation(domain: str):
     """
-    Estadísticas de uso del API
+    Obtener reputación de un dominio
     
-    (Implementar según necesites con base de datos)
+    Ejemplo: /domain-reputation/cnn.com
     """
-    return {
-        "message": "Stats endpoint - implement with database",
-        "total_requests": 0,
-        "uptime": "operational"
-    }
-
-@app.post("/batch-analyze", tags=["Analysis"])
-async def batch_analyze(texts: list[str]):
-    """
-    Analizar múltiples textos en batch
-    
-    **Parameters:**
-    - texts: Lista de textos a analizar
-    
-    **Returns:**
-    - Lista de resultados
-    """
-    if not texts or len(texts) == 0:
-        raise HTTPException(status_code=400, detail="No texts provided")
-    
-    if len(texts) > 10:
-        raise HTTPException(
-            status_code=400, 
-            detail="Maximum 10 texts per batch request"
+    try:
+        domain_data = await mongodb.get_domain_reputation(domain)
+        
+        if not domain_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Domain '{domain}' not found in database"
+            )
+        
+        # Limpiar ObjectId
+        domain_data['_id'] = str(domain_data['_id'])
+        
+        return DomainReputationResponse(
+            domain=domain_data['domain'],
+            reputation_score=domain_data['reputation_score'],
+            total_analyses=domain_data['total_analyses'],
+            fake_count=domain_data['fake_count'],
+            real_count=domain_data['real_count'],
+            fake_ratio=domain_data['fake_ratio'],
+            first_seen=domain_data['first_seen'].isoformat(),
+            last_analyzed=domain_data['last_analyzed'].isoformat()
         )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting domain reputation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/top-domains", tags=["Domains"])
+async def get_top_domains(limit: int = 10, sort_by: str = "total"):
+    """
+    Obtener top dominios más analizados o mejor reputación
     
-    results = []
+    Query params:
+    - limit: número de resultados (default: 10)
+    - sort_by: "total" o "reputation" (default: "total")
+    """
+    try:
+        domains = await mongodb.get_top_domains(limit, sort_by)
+        
+        # Limpiar ObjectIds
+        for domain in domains:
+            domain['_id'] = str(domain['_id'])
+        
+        return {
+            "total": len(domains),
+            "sort_by": sort_by,
+            "domains": domains
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting top domains: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/statistics", tags=["Statistics"])
+async def get_statistics(days: int = 7):
+    """
+    Obtener estadísticas de los últimos N días
     
-    for i, text in enumerate(texts):
-        try:
-            if len(text.strip()) < 10:
-                results.append({
-                    "index": i,
-                    "error": "Text too short (min 10 chars)"
-                })
-                continue
+    Query param:
+    - days: número de días (default: 7)
+    """
+    try:
+        stats = await mongodb.get_statistics(days)
+        
+        # Limpiar ObjectIds y calcular totales
+        total_analyses = 0
+        total_fake = 0
+        total_real = 0
+        total_uncertain = 0
+        
+        for stat in stats:
+            stat['_id'] = str(stat['_id'])
+            total_analyses += stat.get('total_analyses', 0)
             
-            result = model_inference.predict(text)
-            results.append({
-                "index": i,
-                "text_preview": text[:100] + "...",
-                "classification": result['classification'],
-                "score": result['score'],
-                "confidence": result['confidence']
-            })
-        except Exception as e:
-            results.append({
-                "index": i,
-                "error": str(e)
-            })
+            classifications = stat.get('classifications', {})
+            total_fake += classifications.get('fake', 0)
+            total_real += classifications.get('real', 0)
+            total_uncertain += classifications.get('uncertain', 0)
+        
+        return {
+            "period_days": days,
+            "total_analyses": total_analyses,
+            "summary": {
+                "fake": total_fake,
+                "real": total_real,
+                "uncertain": total_uncertain
+            },
+            "daily_stats": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/user-history/{user_id}", tags=["Users"])
+async def get_user_history(user_id: str, limit: int = 50):
+    """
+    Obtener histórico de análisis de un usuario
     
-    return {"results": results, "total": len(texts)}
+    Path param:
+    - user_id: ID del usuario
+    
+    Query param:
+    - limit: número de resultados (default: 50, max: 100)
+    """
+    if limit > 100:
+        limit = 100
+    
+    try:
+        history = await mongodb.get_user_history(user_id, limit)
+        
+        # Limpiar ObjectIds
+        for item in history:
+            item['_id'] = str(item['_id'])
+        
+        return {
+            "user_id": user_id,
+            "total_results": len(history),
+            "history": history
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting user history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
 # ERROR HANDLERS
