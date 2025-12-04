@@ -48,7 +48,7 @@ model_inference = None
 async def startup_event():
     """Cargar modelo y conectar a MongoDB al iniciar"""
     global model_inference
-    logger.info("🚀 Starting Fake News Detector API...")
+    logger.info(" Starting Fake News Detector API...")
     
     try:
         # Conectar a MongoDB
@@ -59,13 +59,13 @@ async def startup_event():
         logger.info("✅ Model loaded successfully")
         
     except Exception as e:
-        logger.error(f"❌ Error during startup: {e}")
+        logger.error(f" Error during startup: {e}")
         raise
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cerrar conexiones al apagar"""
-    logger.info("👋 Shutting down API...")
+    logger.info(" Shutting down API...")
     await mongodb.close()
 
 # ============================================
@@ -160,7 +160,7 @@ async def analyze_text(request: AnalysisRequest):
                 # Convertir ObjectId a string y limpiar
                 cached_result['_id'] = str(cached_result['_id'])
                 
-                logger.info(f"📦 Cache hit para URL: {request.url}")
+                logger.info(f" Cache hit para URL: {request.url}")
                 
                 return AnalysisResponse(
                     classification=cached_result['classification'],
@@ -234,14 +234,14 @@ async def analyze_text(request: AnalysisRequest):
         )
         
         logger.info(
-            f"✅ Analysis completed: score={result['score']:.1f}, "
+            f" Analysis completed: score={result['score']:.1f}, "
             f"classification={result['classification']}"
         )
         
         return response
         
     except Exception as e:
-        logger.error(f"❌ Error during analysis: {e}")
+        logger.error(f" Error during analysis: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"Internal server error: {str(e)}"
@@ -280,7 +280,7 @@ async def get_domain_reputation(domain: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error getting domain reputation: {e}")
+        logger.error(f" Error getting domain reputation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/top-domains", tags=["Domains"])
@@ -306,7 +306,7 @@ async def get_top_domains(limit: int = 10, sort_by: str = "total"):
         }
         
     except Exception as e:
-        logger.error(f"❌ Error getting top domains: {e}")
+        logger.error(f" Error getting top domains: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/statistics", tags=["Statistics"])
@@ -347,7 +347,7 @@ async def get_statistics(days: int = 7):
         }
         
     except Exception as e:
-        logger.error(f"❌ Error getting statistics: {e}")
+        logger.error(f" Error getting statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/user-history/{user_id}", tags=["Users"])
@@ -378,7 +378,7 @@ async def get_user_history(user_id: str, limit: int = 50):
         }
         
     except Exception as e:
-        logger.error(f"❌ Error getting user history: {e}")
+        logger.error(f" Error getting user history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
